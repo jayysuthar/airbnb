@@ -47,10 +47,12 @@ This is an Airbnb clone built with Node.js and Express.js that demonstrates a co
 - View all hosted properties
 
 ### Additional Features
-- Image upload support (JPEG, PNG, JPG)
+- Image upload support (JPEG, PNG, JPG, WebP)
+- Cloud-based storage with Cloudinary CDN
 - PDF document upload for house rules
 - Responsive UI with Tailwind CSS
 - Session management across pages
+- Automatic image optimization
 
 ## 🛠 Tech Stack
 
@@ -64,12 +66,18 @@ This is an Airbnb clone built with Node.js and Express.js that demonstrates a co
 - **EJS** - Embedded JavaScript templating
 - **Tailwind CSS** - Utility-first CSS framework
 
+### Cloud Services
+- **Cloudinary** - Cloud-based image and file storage with CDN delivery
+- **MongoDB Atlas** - Cloud-hosted MongoDB database
+
 ### Libraries & Middleware
 - **bcryptjs** - Password hashing and security
 - **express-session** - Session management
 - **connect-mongodb-session** - MongoDB session store
 - **multer** - File upload handling
+- **multer-storage-cloudinary** - Cloudinary storage adapter for Multer
 - **express-validator** - Server-side validation
+- **dotenv** - Environment variable management
 - **nodemon** - Development auto-restart
 
 ## 📁 Project Structure
@@ -132,36 +140,54 @@ This will install all the required packages listed in `package.json`:
 - Session management packages
 - Development tools (nodemon)
 
-### Step 3: Create Required Directories
+### Step 3: Set Up Cloudinary (Cloud Storage for Images)
 
-The application needs these directories for file uploads:
+**IMPORTANT**: This step is **required** for deployment on Vercel or any serverless platform.
+
+1. **Create a Free Cloudinary Account**:
+   - Go to [cloudinary.com](https://cloudinary.com/) and sign up for a free account
+   - After signing up, you'll be taken to your dashboard
+
+2. **Get Your Cloudinary Credentials**:
+   - On the dashboard, you'll see:
+     - Cloud Name
+     - API Key
+     - API Secret
+   - Keep these handy for the next step
+
+### Step 4: Configure Environment Variables
+
+1. **Create a `.env` file** in the project root:
 
 ```bash
-mkdir -p uploads rules
+cp .env.example .env
 ```
 
-- `uploads/` - Stores property images
-- `rules/` - Stores house rules PDF files
+2. **Edit the `.env` file** and add your credentials:
 
-### Step 4: Configure Database Connection
+```env
+# MongoDB Configuration
+MONGODB_URI=your-mongodb-connection-string-here
 
-The application is currently configured to use MongoDB Atlas. You have two options:
+# Server Configuration
+PORT=3000
 
-#### Option A: Use Existing Configuration (Testing)
-The current configuration connects to a demo database. You can use it for testing purposes.
+# Session Secret (use a strong random string)
+SESSION_SECRET=your-secret-key-here
 
-#### Option B: Use Your Own MongoDB Database (Recommended)
-1. Create a free MongoDB Atlas account at [mongodb.com/cloud/atlas](https://www.mongodb.com/cloud/atlas)
-2. Create a new cluster
-3. Create a database user with password
-4. Get your connection string
-5. Update the MongoDB URL in `app.js` (lines 11-12 and 105):
-
-```javascript
-const MONGO_DB_URL = "your-mongodb-connection-string-here";
+# Cloudinary Configuration
+CLOUDINARY_CLOUD_NAME=your-cloud-name
+CLOUDINARY_API_KEY=your-api-key
+CLOUDINARY_API_SECRET=your-api-secret
 ```
 
-Replace `your-mongodb-connection-string-here` with your actual MongoDB connection string.
+3. **Get MongoDB Connection String**:
+   - Create a free MongoDB Atlas account at [mongodb.com/cloud/atlas](https://www.mongodb.com/cloud/atlas)
+   - Create a new cluster
+   - Create a database user with password
+   - Get your connection string and replace `your-mongodb-connection-string-here`
+
+4. **Important**: Never commit the `.env` file to Git (it's already in `.gitignore`)
 
 ### Step 5: Verify Setup
 
@@ -234,33 +260,38 @@ Stores property listing information:
 - price (Number, required)
 - location (String, required)
 - rating (Number, required)
-- photo (String - file path)
+- photo (String - Cloudinary URL)
+- photoPublicId (String - Cloudinary public ID for deletion)
 - description (String)
+- rulesUrl (String - Cloudinary URL for house rules PDF)
+- rulesPublicId (String - Cloudinary public ID for PDF deletion)
 
 #### 3. Sessions Collection
 Automatically managed by `connect-mongodb-session` for user session storage.
 
 ## 🔐 Environment Variables
 
-Currently, the MongoDB connection URL is hardcoded in `app.js`. For production use, consider:
+The application uses environment variables for configuration. A `.env.example` file is provided as a template.
 
-1. Creating a `.env` file:
+**Required Environment Variables**:
+
 ```env
+# MongoDB Configuration
 MONGODB_URI=your-mongodb-connection-string
+
+# Server Configuration
 PORT=3000
+
+# Session Secret
 SESSION_SECRET=your-secret-key
+
+# Cloudinary Configuration (Required for image uploads)
+CLOUDINARY_CLOUD_NAME=your-cloud-name
+CLOUDINARY_API_KEY=your-api-key
+CLOUDINARY_API_SECRET=your-api-secret
 ```
 
-2. Installing dotenv:
-```bash
-npm install dotenv
-```
-
-3. Update `app.js` to use environment variables:
-```javascript
-require('dotenv').config();
-const MONGO_DB_URL = process.env.MONGODB_URI;
-```
+**For Vercel Deployment**: Add these environment variables in your Vercel project settings under "Environment Variables".
 
 ## 📖 Usage
 
@@ -328,13 +359,90 @@ POST /host/delete-home/:homeId   - Delete property
 
 ## 📝 Notes
 
-- The application runs on **port 3000** by default
-- File uploads are limited to:
-  - Images: JPEG, PNG, JPG formats
+- The application runs on **port 3000** by default (configurable via PORT environment variable)
+- File uploads are handled by **Cloudinary** (cloud storage):
+  - Images: JPEG, PNG, JPG, WebP formats (auto-optimized to max 1000x1000)
   - House rules: PDF format only
 - Sessions are stored in MongoDB for persistence
 - All host routes require authentication
 - Passwords are encrypted using bcryptjs before storage
+- Images and PDFs are automatically deleted from Cloudinary when properties are deleted or updated
+- All files are served via Cloudinary CDN for fast global delivery
+
+## 🚀 Deploying to Vercel
+
+This application is ready for deployment on Vercel with Cloudinary for file storage.
+
+### Prerequisites
+- Vercel account ([vercel.com](https://vercel.com))
+- MongoDB Atlas database
+- Cloudinary account
+
+### Deployment Steps
+
+1. **Push your code to GitHub**:
+```bash
+git init
+git add .
+git commit -m "Initial commit"
+git remote add origin your-repo-url
+git push -u origin main
+```
+
+2. **Import Project to Vercel**:
+   - Go to [vercel.com/new](https://vercel.com/new)
+   - Import your GitHub repository
+   - Configure project settings
+
+3. **Add Environment Variables** in Vercel:
+   - Go to Project Settings → Environment Variables
+   - Add all variables from your `.env` file:
+     - `MONGODB_URI`
+     - `SESSION_SECRET`
+     - `CLOUDINARY_CLOUD_NAME`
+     - `CLOUDINARY_API_KEY`
+     - `CLOUDINARY_API_SECRET`
+
+4. **Deploy**:
+   - Click "Deploy"
+   - Vercel will automatically build and deploy your application
+
+5. **Verify**:
+   - Visit your deployed URL
+   - Test image uploads to ensure Cloudinary is working
+
+### Why Cloudinary?
+
+Vercel uses **serverless functions** which have:
+- **Ephemeral filesystem**: Files are deleted after each request
+- **Read-only environment**: Cannot write to local disk in production
+- **Stateless architecture**: Each request may be handled by a different server instance
+
+**Cloudinary solves this by**:
+- Storing files permanently in the cloud
+- Providing CDN delivery for fast global access
+- Automatic image optimization
+- Easy file management and deletion
+
+### Troubleshooting Deployment
+
+If images are broken after deployment:
+1. ✅ Verify Cloudinary credentials in Vercel environment variables
+2. ✅ Check that all environment variables are set (all 5 required)
+3. ✅ Ensure MongoDB is accessible from Vercel (check IP whitelist in MongoDB Atlas)
+4. ✅ Check Vercel deployment logs for errors
+5. ✅ Test image upload on deployed site to verify Cloudinary is working
+6. ✅ Check Cloudinary dashboard to see if files are being uploaded
+
+### Verifying Successful Deployment
+
+After deployment, verify everything works:
+1. **Visit your deployed site** on Vercel
+2. **Sign up/Login as a host**
+3. **Add a property** with an image (JPEG, PNG, JPG, or WebP)
+4. **Check that the image displays** correctly
+5. **Visit Cloudinary dashboard** - you should see the uploaded file in the `airbnb/properties` folder
+6. **Test editing/deleting** properties to ensure old images are removed from Cloudinary
 
 ## 🤝 Contributing
 

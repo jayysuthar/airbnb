@@ -1,5 +1,5 @@
 const Home = require("../models/home");
-const fs = require("fs");
+const { cloudinary } = require("../config/cloudinary");
 
 exports.getAddHome = (req, res, next) => {
   res.render("host/edit-home", {
@@ -47,40 +47,52 @@ exports.getHostHomes = (req, res, next) => {
 
 exports.postAddHome = (req, res, next) => {
   const { houseName, price, location, rating, description } = req.body;
-  console.log(houseName, price, location, rating, description);
-  console.log(req.files);
+  console.log("Form data:", houseName, price, location, rating, description);
+  console.log("Files received:", JSON.stringify(req.files, null, 2));
 
   if (!req.files || !req.files.photo) {
     return res.status(400).send("No image provided");
   }
 
-  const photo = req.files.photo[0].path;
+  try {
+    // Cloudinary returns the URL in path property
+    const photo = req.files.photo[0].path;
 
-  const home = new Home({
-    houseName,
-    price,
-    location,
-    rating,
-    photo,
-    description,
-  });
+    // Store the public_id for potential deletion later
+    const photoPublicId = req.files.photo[0].filename;
 
-  home.save().then((savedHome) => {
-    console.log("Home Saved successfully");
+    console.log("Photo URL:", photo);
+    console.log("Photo Public ID:", photoPublicId);
 
-    // If PDF rules provided, save with homeId as filename
+    const home = new Home({
+      houseName,
+      price,
+      location,
+      rating,
+      photo,
+      photoPublicId, // Store Cloudinary public_id
+      description,
+    });
+
+    // Handle PDF rules if provided
     if (req.files && req.files.details) {
-      const fs = require("fs");
-      const path = require("path");
-      const oldPath = req.files.details[0].path;
-      const newPath = path.join("rules", `${savedHome._id}.pdf`);
-      fs.rename(oldPath, newPath, (err) => {
-        if (err) console.log("Error renaming PDF:", err);
-      });
+      home.rulesUrl = req.files.details[0].path;
+      home.rulesPublicId = req.files.details[0].filename;
     }
-  });
 
-  res.redirect("/host/host-home-list");
+    home.save().then((savedHome) => {
+      console.log("Home Saved successfully:", savedHome._id);
+      res.redirect("/host/host-home-list");
+    }).catch((err) => {
+      console.error("Error saving home to database:", err.message);
+      console.error("Full error:", err);
+      res.status(500).send("Error saving home: " + err.message);
+    });
+  } catch (err) {
+    console.error("Error processing upload:", err.message);
+    console.error("Full error:", err);
+    res.status(500).send("Error processing upload: " + err.message);
+  }
 };
 
 exports.postEditHome = (req, res, next) => {
@@ -94,49 +106,83 @@ exports.postEditHome = (req, res, next) => {
       home.rating = rating;
       home.description = description;
 
+      // If new photo uploaded, delete old one from Cloudinary and update
       if (req.files && req.files.photo) {
-        fs.unlink(home.photo, (err) => {
-          if (err) {
-            console.log("Error while deleting file", err);
-          }
-        });
+        // Delete old image from Cloudinary if exists
+        if (home.photoPublicId) {
+          cloudinary.uploader.destroy(home.photoPublicId, (err, result) => {
+            if (err) {
+              console.log("Error deleting old image from Cloudinary:", err);
+            }
+          });
+        }
         home.photo = req.files.photo[0].path;
+        home.photoPublicId = req.files.photo[0].filename;
+      }
+
+      // If new PDF rules uploaded, delete old one and update
+      if (req.files && req.files.details) {
+        if (home.rulesPublicId) {
+          cloudinary.uploader.destroy(home.rulesPublicId, { resource_type: 'raw' }, (err, result) => {
+            if (err) {
+              console.log("Error deleting old PDF from Cloudinary:", err);
+            }
+          });
+        }
+        home.rulesUrl = req.files.details[0].path;
+        home.rulesPublicId = req.files.details[0].filename;
       }
 
       home
         .save()
         .then((result) => {
           console.log("Home updated ", result);
-
-          // If PDF rules provided, save/overwrite with homeId as filename
-          if (req.files && req.files.details) {
-            const fs = require("fs");
-            const path = require("path");
-            const oldPath = req.files.details[0].path;
-            const newPath = path.join("rules", `${id}.pdf`);
-            fs.rename(oldPath, newPath, (err) => {
-              if (err) console.log("Error renaming PDF:", err);
-            });
-          }
+          res.redirect("/host/host-home-list");
         })
         .catch((err) => {
           console.log("Error while updating ", err);
+          res.status(500).send("Error updating home");
         });
-      res.redirect("/host/host-home-list");
     })
     .catch((err) => {
       console.log("Error while finding home ", err);
+      res.status(500).send("Error finding home");
     });
 };
 
 exports.postDeleteHome = (req, res, next) => {
   const homeId = req.params.homeId;
   console.log("Came to delete ", homeId);
-  Home.findByIdAndDelete(homeId)
+
+  // First find the home to get Cloudinary public IDs
+  Home.findById(homeId)
+    .then((home) => {
+      if (!home) {
+        return res.status(404).send("Home not found");
+      }
+
+      // Delete image from Cloudinary if exists
+      if (home.photoPublicId) {
+        cloudinary.uploader.destroy(home.photoPublicId, (err) => {
+          if (err) console.log("Error deleting image from Cloudinary:", err);
+        });
+      }
+
+      // Delete PDF from Cloudinary if exists
+      if (home.rulesPublicId) {
+        cloudinary.uploader.destroy(home.rulesPublicId, { resource_type: 'raw' }, (err) => {
+          if (err) console.log("Error deleting PDF from Cloudinary:", err);
+        });
+      }
+
+      // Delete the home from database
+      return Home.findByIdAndDelete(homeId);
+    })
     .then(() => {
       res.redirect("/host/host-home-list");
     })
     .catch((error) => {
       console.log("Error while deleting ", error);
+      res.status(500).send("Error deleting home");
     });
 };

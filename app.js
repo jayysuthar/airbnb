@@ -1,3 +1,6 @@
+// Load environment variables
+require("dotenv").config();
+
 // Core Module
 const path = require("path");
 
@@ -8,7 +11,11 @@ const MongoDBStore = require("connect-mongodb-session")(session);
 const multer = require("multer");
 const { mongoose } = require("mongoose");
 
+// Cloudinary configuration
+const { imageStorage, pdfStorage } = require("./config/cloudinary");
+
 const MONGO_DB_URL =
+  process.env.MONGODB_URI ||
   "mongodb+srv://root:root1835@pjnode.gsxhisp.mongodb.net/airbnb?appName=PJNode";
 
 //Local Module
@@ -28,23 +35,34 @@ const store = new MongoDBStore({
   collection: "sessions",
 });
 
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
+// Combined storage handler that routes to correct Cloudinary folder
+const { CloudinaryStorage } = require("multer-storage-cloudinary");
+const { cloudinary } = require("./config/cloudinary");
+
+const combinedStorage = new CloudinaryStorage({
+  cloudinary: cloudinary,
+  params: (req, file) => {
     if (file.fieldname === "photo") {
-      cb(null, "uploads/");
+      return {
+        folder: "airbnb/properties",
+        allowed_formats: ["jpg", "jpeg", "png", "webp"],
+        transformation: [{ width: 1000, height: 1000, crop: "limit" }],
+      };
     } else if (file.fieldname === "details") {
-      cb(null, "rules/");
+      return {
+        folder: "airbnb/rules",
+        allowed_formats: ["pdf"],
+        resource_type: "raw",
+      };
     }
-  },
-  filename: (req, file, cb) => {
-    cb(null, new Date().toISOString() + "-" + file.originalname);
   },
 });
 
+// File filter for validating file types
 const fileFilter = (req, file, cb) => {
   if (file.fieldname === "photo") {
-    // Only allow images for photo
-    if (["image/jpeg", "image/png", "image/jpg"].includes(file.mimetype)) {
+    // Only allow images for photo (including WebP)
+    if (["image/jpeg", "image/png", "image/jpg", "image/webp"].includes(file.mimetype)) {
       cb(null, true);
     } else {
       cb(null, false);
@@ -56,19 +74,35 @@ const fileFilter = (req, file, cb) => {
     } else {
       cb(null, false);
     }
+  } else {
+    cb(null, false);
   }
 };
 
 app.use(express.urlencoded());
 app.use(
-  multer({ storage, fileFilter }).fields([
+  multer({ storage: combinedStorage, fileFilter }).fields([
     { name: "photo", maxCount: 1 },
     { name: "details", maxCount: 1 },
   ]),
 );
+
+// Multer error handling middleware
+app.use((err, req, res, next) => {
+  if (err instanceof multer.MulterError) {
+    console.error("Multer error:", err.message);
+    return res.status(400).send("File upload error: " + err.message);
+  } else if (err) {
+    console.error("Upload error:", err.message);
+    console.error("Full error:", err);
+    return res.status(500).send("Upload error: " + err.message);
+  }
+  next();
+});
+
 app.use(
   session({
-    secret: "PJ Node learning",
+    secret: process.env.SESSION_SECRET || "PJ Node learning",
     resave: false,
     saveUninitialized: true,
     store: store,
@@ -91,22 +125,20 @@ app.use("/host", (req, res, next) => {
 app.use("/host", hostRouter);
 
 app.use(express.static(path.join(rootDir, "public")));
-app.use("/uploads", express.static(path.join(rootDir, "uploads")));
-app.use("/rules", express.static(path.join(rootDir, "rules")));
-app.use("/host/uploads", express.static(path.join(rootDir, "uploads")));
-app.use("/homes/uploads", express.static(path.join(rootDir, "uploads")));
+// No longer needed - files served from Cloudinary
+// app.use("/uploads", express.static(path.join(rootDir, "uploads")));
+// app.use("/rules", express.static(path.join(rootDir, "rules")));
+// app.use("/host/uploads", express.static(path.join(rootDir, "uploads")));
+// app.use("/homes/uploads", express.static(path.join(rootDir, "uploads")));
 
 app.use(errorsController.pageNotFound);
 
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 
 mongoose
-  .connect(
-    "mongodb+srv://root:root1835@pjnode.gsxhisp.mongodb.net/airbnb?appName=PJNode",
-    {
-      tls: true,
-    },
-  )
+  .connect(MONGO_DB_URL, {
+    tls: true,
+  })
   .then(() => {
     console.log("Connected to MongoDB via Mongoose");
     app.listen(PORT, () => {

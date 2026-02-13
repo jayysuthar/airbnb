@@ -17,8 +17,11 @@ const homeSchema = mongoose.Schema({
     type: Number,
     required: true,
   },
-  photo: String,
+  photo: String, // Cloudinary URL
+  photoPublicId: String, // Cloudinary public_id for deletion
   description: String,
+  rulesUrl: String, // Cloudinary URL for PDF
+  rulesPublicId: String, // Cloudinary public_id for PDF deletion
 });
 
 // homeSchema.pre('findOneAndDelete', async function(next) {

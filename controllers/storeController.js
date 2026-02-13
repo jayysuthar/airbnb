@@ -96,10 +96,21 @@ exports.getHouseRules = [
     }
     next();
   },
-  (req, res, next) => {
+  async (req, res, next) => {
     const homeId = req.params.homeId;
-    const filePath = path.join(rootDir, "rules", `${homeId}.pdf`);
 
-    res.download(filePath, `Rules.pdf`);
+    try {
+      const home = await Home.findById(homeId);
+
+      if (!home || !home.rulesUrl) {
+        return res.status(404).send("House rules not found");
+      }
+
+      // Redirect to Cloudinary URL - it will download or display the PDF
+      res.redirect(home.rulesUrl);
+    } catch (err) {
+      console.log("Error fetching house rules:", err);
+      res.status(500).send("Error fetching house rules");
+    }
   },
 ];

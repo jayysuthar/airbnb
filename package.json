@@ -14,7 +14,9 @@
   "dependencies": {
     "@tailwindcss/cli": "^4.1.18",
     "bcryptjs": "^3.0.3",
+    "cloudinary": "^1.41.3",
     "connect-mongodb-session": "^5.0.0",
+    "dotenv": "^17.3.1",
     "ejs": "^3.1.10",
     "express": "^5.2.1",
     "express-session": "^1.18.2",
@@ -22,6 +24,7 @@
     "mongodb": "^7.0.0",
     "mongoose": "^9.1.2",
     "multer": "^2.0.2",
+    "multer-storage-cloudinary": "^4.0.0",
     "mysql2": "^3.16.0",
     "nodemon": "^3.1.11"
   },
